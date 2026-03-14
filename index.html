@@ -344,7 +344,7 @@
   <div id="tab-notes" class="panel active" style="padding-top:20px">
     <p class="section-title">My Notes</p>
     <div class="glass notes-wrapper">
-      <textarea id="notes-area" placeholder="Jot down anything — meals, goals, thoughts…"></textarea>
+      <textarea id="notes-area" placeholder="Jot down anything — try typing 'carrot 25g' and pressing Enter!"></textarea>
       <div class="notes-footer">
         <span class="char-count" id="char-count">0 characters</span>
         <span class="save-pill" id="save-msg">Auto-saved</span>
@@ -443,12 +443,51 @@ const charCount  = document.getElementById('char-count');
 notesArea.value  = localStorage.getItem('notes') || '';
 charCount.textContent = notesArea.value.length + ' characters';
 
-notesArea.addEventListener('input', () => {
+function saveNotes() {
   localStorage.setItem('notes', notesArea.value);
   charCount.textContent = notesArea.value.length + ' characters';
   saveMsg.textContent = 'Saved ✓';
-  saveMsg.style.opacity = '1';
   setTimeout(() => { saveMsg.textContent = 'Auto-saved'; }, 1500);
+}
+
+notesArea.addEventListener('input', saveNotes);
+
+notesArea.addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+  const lines = notesArea.value.split('\n');
+  const lastLine = lines[lines.length - 1].trim();
+  const match = lastLine.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*g$/i);
+  if (!match) return;
+
+  const foodName = match[1].trim();
+  const grams    = parseFloat(match[2]);
+
+  e.preventDefault();
+  saveMsg.textContent = '🔍 Looking up macros...';
+
+  try {
+    const res   = await fetch(`${BASE}/search?q=${encodeURIComponent(foodName)}`);
+    const data  = await res.json();
+    const foods = data?.foods?.food;
+    if (!foods) { notesArea.value += '\n'; saveNotes(); return; }
+    const food  = Array.isArray(foods) ? foods[0] : foods;
+
+    const res2  = await fetch(`${BASE}/food?id=${food.food_id}`);
+    const data2 = await res2.json();
+    const servings = data2?.food?.servings?.serving;
+    const arr   = Array.isArray(servings) ? servings : [servings];
+    const base  = arr.find(s => s.serving_description?.includes('100')) || arr[0];
+
+    const s   = grams / 100;
+    const fmt = v => (parseFloat(v || 0) * s).toFixed(1);
+
+    const macroLine = `  → ${fmt(base.calories)}kcal | Protein: ${fmt(base.protein)}g | Carbs: ${fmt(base.carbohydrate)}g | Fibre: ${fmt(base.fiber)}g`;
+    notesArea.value += '\n' + macroLine + '\n';
+    saveNotes();
+  } catch {
+    notesArea.value += '\n';
+    saveNotes();
+  }
 });
 
 // ── CALCULATOR ────────────────────────────────────────
