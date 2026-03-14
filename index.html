@@ -456,6 +456,18 @@ notesArea.addEventListener('keydown', async (e) => {
   if (e.key !== 'Enter') return;
   const lines = notesArea.value.split('\n');
   const lastLine = lines[lines.length - 1].trim();
+
+  // ── TOTAL keyword ──
+  if (lastLine.toLowerCase() === 'total') {
+    e.preventDefault();
+    const t = calcNotesTotal();
+    const totalLine = `\n═ TOTAL → ${t.cal.toFixed(1)}kcal | Protein: ${t.pro.toFixed(1)}g | Carbs: ${t.carb.toFixed(1)}g | Fibre: ${t.fib.toFixed(1)}g\n`;
+    notesArea.value += totalLine;
+    saveNotes();
+    return;
+  }
+
+  // ── food Xg pattern ──
   const match = lastLine.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*g$/i);
   if (!match) return;
 
@@ -489,6 +501,22 @@ notesArea.addEventListener('keydown', async (e) => {
     saveNotes();
   }
 });
+
+function calcNotesTotal() {
+  const lines = notesArea.value.split('\n');
+  const totals = { cal: 0, pro: 0, carb: 0, fib: 0 };
+  const re = /→\s*([\d.]+)kcal\s*\|\s*Protein:\s*([\d.]+)g\s*\|\s*Carbs:\s*([\d.]+)g\s*\|\s*Fibre:\s*([\d.]+)g/;
+  lines.forEach(l => {
+    const m = l.match(re);
+    if (m) {
+      totals.cal  += parseFloat(m[1]);
+      totals.pro  += parseFloat(m[2]);
+      totals.carb += parseFloat(m[3]);
+      totals.fib  += parseFloat(m[4]);
+    }
+  });
+  return totals;
+}
 
 // ── CALCULATOR ────────────────────────────────────────
 let calcExpr = '';
