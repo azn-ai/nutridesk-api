@@ -344,7 +344,7 @@
   <div id="tab-notes" class="panel active" style="padding-top:20px">
     <p class="section-title">My Notes</p>
     <div class="glass notes-wrapper">
-      <textarea id="notes-area" placeholder="Jot down anything — try typing 'carrot 25g' and pressing Enter!"></textarea>
+      <textarea id="notes-area" placeholder="Try: 'carrot 25g' or '2 eggs' then press Enter. Type 'total' + Enter to sum all macros."></textarea>
       <div class="notes-footer">
         <span class="char-count" id="char-count">0 characters</span>
         <span class="save-pill" id="save-msg">Auto-saved</span>
@@ -467,12 +467,17 @@ notesArea.addEventListener('keydown', async (e) => {
     return;
   }
 
-  // ── food Xg pattern ──
-  const match = lastLine.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*g$/i);
-  if (!match) return;
+  // ── food Xg pattern e.g. carrot 25g ──
+  const matchGrams = lastLine.match(/^(.+?)\s+(\d+(?:\.\d+)?)\s*g$/i);
+  // ── X food pattern e.g. 2 eggs ──
+  const matchCount = lastLine.match(/^(\d+(?:\.\d+)?)\s+(.+)$/i);
 
-  const foodName = match[1].trim();
-  const grams    = parseFloat(match[2]);
+  if (!matchGrams && !matchCount) return;
+
+  const isGrams    = !!matchGrams;
+  const foodName   = isGrams ? matchGrams[1].trim() : matchCount[2].trim();
+  const grams      = isGrams ? parseFloat(matchGrams[2]) : null;
+  const servingQty = isGrams ? null : parseFloat(matchCount[1]);
 
   e.preventDefault();
   saveMsg.textContent = '🔍 Looking up macros...';
@@ -484,16 +489,29 @@ notesArea.addEventListener('keydown', async (e) => {
     if (!foods) { notesArea.value += '\n'; saveNotes(); return; }
     const food  = Array.isArray(foods) ? foods[0] : foods;
 
-    const res2  = await fetch(`${BASE}/food?id=${food.food_id}`);
-    const data2 = await res2.json();
+    const res2     = await fetch(`${BASE}/food?id=${food.food_id}`);
+    const data2    = await res2.json();
     const servings = data2?.food?.servings?.serving;
-    const arr   = Array.isArray(servings) ? servings : [servings];
-    const base  = arr.find(s => s.serving_description?.includes('100')) || arr[0];
+    const arr      = Array.isArray(servings) ? servings : [servings];
 
-    const s   = grams / 100;
-    const fmt = v => (parseFloat(v || 0) * s).toFixed(1);
+    let cal, pro, carb, fib;
+    if (isGrams) {
+      const base = arr.find(s => s.serving_description?.includes('100')) || arr[0];
+      const scale = grams / 100;
+      cal  = parseFloat(base.calories     || 0) * scale;
+      pro  = parseFloat(base.protein      || 0) * scale;
+      carb = parseFloat(base.carbohydrate || 0) * scale;
+      fib  = parseFloat(base.fiber        || 0) * scale;
+    } else {
+      // use single-unit serving (e.g. 1 egg) multiplied by count
+      const base = arr.find(s => parseFloat(s.number_of_units) === 1) || arr[0];
+      cal  = parseFloat(base.calories     || 0) * servingQty;
+      pro  = parseFloat(base.protein      || 0) * servingQty;
+      carb = parseFloat(base.carbohydrate || 0) * servingQty;
+      fib  = parseFloat(base.fiber        || 0) * servingQty;
+    }
 
-    const macroLine = `  → ${fmt(base.calories)}kcal | Protein: ${fmt(base.protein)}g | Carbs: ${fmt(base.carbohydrate)}g | Fibre: ${fmt(base.fiber)}g`;
+    const macroLine = `  → ${cal.toFixed(1)}kcal | Protein: ${pro.toFixed(1)}g | Carbs: ${carb.toFixed(1)}g | Fibre: ${fib.toFixed(1)}g`;
     notesArea.value += '\n' + macroLine + '\n';
     saveNotes();
   } catch {
